@@ -26,7 +26,7 @@ COPY --from=node-runtime /usr/local/ /usr/local/lib/pi-web-node/
 RUN ln -s /usr/local/lib/pi-web-node/bin/node /usr/local/bin/node \
  && ln -s /usr/local/lib/pi-web-node/bin/npm /usr/local/bin/npm \
  && ln -s /usr/local/lib/pi-web-node/bin/npx /usr/local/bin/npx
-# Upstream's base installer (unchanged copy from docker/internal/image at v1.202611.5):
+# Upstream's base installer (copy from docker/internal/image at v1.202611.5, minus the git PPA):
 # git, build tools, python3, ripgrep, jq, mise + gh, and the pi-web user (uid 1000).
 COPY --chmod=0755 docker/install-ubuntu-base /usr/local/sbin/install-pi-web-ubuntu-base
 RUN install-pi-web-ubuntu-base
