@@ -1,0 +1,33 @@
+{
+	admin off
+	auto_https off
+	persist_config off
+	servers {
+		trusted_proxies static private_ranges
+	}
+	log {
+		output stdout
+		level WARN
+	}
+}
+
+:{$PORT:8080} {
+	# Open health path for Railway: answers only when the Pi Web server answers.
+	# Pi Web always allows loopback hosts, so send that Host upstream here.
+	handle /healthz {
+		rewrite * /api/pi-web/runtime
+		reverse_proxy 127.0.0.1:8504 {
+			header_up Host 127.0.0.1:8504
+		}
+	}
+
+	# Everything else (web UI, API, terminal and session websockets) needs the
+	# generated login. The public Host and Origin pass through unchanged, as
+	# Pi Web's Origin guard requires.
+	handle {
+		basic_auth {
+			{$PI_WEB_USERNAME} {$PI_WEB_PASSWORD_HASH}
+		}
+		reverse_proxy 127.0.0.1:8504
+	}
+}

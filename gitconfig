@@ -1,0 +1,8 @@
+# Keep git's memory use small on a 0.5 GB Railway service (index-pack, repack).
+[pack]
+	threads = 1
+	windowMemory = 64m
+	deltaCacheSize = 32m
+[core]
+	packedGitLimit = 128m
+	packedGitWindowSize = 32m
