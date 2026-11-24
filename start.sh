@@ -19,7 +19,7 @@ if [ "$PORT" = "8504" ]; then
 	exit 1
 fi
 
-run_as() { setpriv --reuid=pi-web --regid="$(id -g pi-web)" --init-groups -- "$@"; }
+PI_GID=$(id -g pi-web)
 
 # --- Persistent layout: everything lives on the /data volume -------------------
 # HOME, XDG config, Pi Web state, the Pi agent profile (providers, sessions) and
@@ -27,7 +27,7 @@ run_as() { setpriv --reuid=pi-web --regid="$(id -g pi-web)" --init-groups -- "$@
 # large workspace isn't walked on every start.
 for d in /data /data/home /data/config /data/pi-web /data/pi-agent /data/workspace; do
 	mkdir -p "$d"
-	if [ "$(stat -c %U "$d")" != "pi-web" ]; then chown -R pi-web: "$d"; fi
+	if [ "$(stat -c %u:%g "$d")" != "$(id -u pi-web):$PI_GID" ]; then chown -R pi-web: "$d"; fi
 done
 # A crashed daemon can leave its socket behind; Pi Web recovers stale owner
 # markers itself, but a stale socket file blocks the bind.
@@ -101,13 +101,13 @@ export PI_WEB_PASSWORD_HASH
 unset PI_WEB_PASSWORD
 mkdir -p /tmp/caddy && chown pi-web: /tmp/caddy
 (cd /tmp && HOME=/tmp/caddy XDG_CONFIG_HOME=/tmp/caddy XDG_DATA_HOME=/tmp/caddy GOMEMLIMIT="${GOMEMLIMIT:-48MiB}" GOMAXPROCS="${CADDY_GOMAXPROCS:-2}" \
-	exec setpriv --reuid=pi-web --regid="$(id -g pi-web)" --init-groups -- caddy run --adapter caddyfile --config /etc/pi-web-railway/Caddyfile) &
+	exec setpriv --reuid=pi-web --regid="$PI_GID" --init-groups -- caddy run --adapter caddyfile --config /etc/pi-web-railway/Caddyfile) &
 proxy=$!
 unset PI_WEB_PASSWORD_HASH
 
 # --- Pi Web: session daemon first, then the web/API server ---------------------
 cd /data/workspace
-run_as pi-web-service ${sessiond_heap:+--max-old-space-size=$sessiond_heap} "$PKG/dist/server/sessiond.js" &
+setpriv --reuid=pi-web --regid="$PI_GID" --init-groups -- pi-web-service ${sessiond_heap:+--max-old-space-size=$sessiond_heap} "$PKG/dist/server/sessiond.js" &
 sessiond=$!
 for _ in $(seq 1 120); do
 	[ -S "$PI_WEB_SESSIOND_SOCKET" ] && break
@@ -119,7 +119,7 @@ if ! [ -S "$PI_WEB_SESSIOND_SOCKET" ]; then
 	kill -TERM "$sessiond" "$proxy" 2>/dev/null || true
 	exit 1
 fi
-run_as pi-web-service ${web_heap:+--max-old-space-size=$web_heap} "$PKG/dist/server/index.js" &
+setpriv --reuid=pi-web --regid="$PI_GID" --init-groups -- pi-web-service ${web_heap:+--max-old-space-size=$web_heap} "$PKG/dist/server/index.js" &
 web=$!
 
 stopping=0
