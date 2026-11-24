@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 # Copied from jmfederico/pi-web v1.202611.5 docker/internal/image/install-ubuntu-base.
-# Only change: no git-core PPA (Ubuntu's git is used).
+# Changes: no git-core PPA (Ubuntu's git is used) and the GitHub CLI comes from
+# Ubuntu's gh package instead of a mise gh@latest install (no sigstore/TUF
+# download at build time, so a deploy's build has fewer network dependencies).
 
 # Build-time only. Image defaults live outside mounted home and /opt contents;
 # user configuration and subsequent tool installs belong on /data.
@@ -28,7 +30,7 @@ packages=(
   build-essential python3 python3-dev python3-pip python3-venv
   jq ripgrep fd-find fzf bat vim shellcheck less file which
   tar gzip xz-utils unzip zip zstd findutils grep sed gawk patch diffutils
-  util-linux hostname iproute2 dnsutils rsync libatomic1 libstdc++6
+  util-linux hostname iproute2 dnsutils rsync libatomic1 libstdc++6 gh
 )
 if [[ -n ${GIT_VERSION:-} ]]; then
   packages+=("git=$GIT_VERSION" "git-man=$GIT_VERSION")
@@ -60,21 +62,7 @@ curl --fail --silent --show-error --location --retry 3 "$mise_url/SHASUMS256.txt
 (cd "$tmp"; grep -E "^[a-f0-9]{64}  (\./)?${mise_asset}$" SHASUMS256.txt > checksum; sha256sum --check --strict checksum)
 install -m 0755 "$tmp/$mise_asset" /usr/local/bin/mise
 
-# System config is lower precedence than persistent user and project pins.
-install -d -m 0755 /etc/mise
-printf '[tools]\ngh = { version = "latest", minimum_release_age = "0s" }\n' > /etc/mise/config.toml
-# Use an ordinary data root, NOT --system: upgrades of system installs retain
-# their protected destination. Shared installs allow new versions under /data.
-# Keep build caches/state out of the runtime user's mounted directories.
-HOME="$tmp" XDG_CONFIG_HOME="$tmp/config" MISE_CONFIG_DIR="$tmp/config/mise" \
-  MISE_DATA_DIR=/usr/local/share/pi-web/mise MISE_SHARED_INSTALL_DIRS="" \
-  MISE_CACHE_DIR="$tmp/cache" MISE_STATE_DIR="$tmp/state" \
-  MISE_CEILING_PATHS=/ MISE_NO_ENV=1 MISE_NO_HOOKS=1 mise -C / install gh
-# mise 2026.10.17 prunes a relative shared `global` alias when a user pin or
-# upgrade selects another root. An absolute alias is unmanaged, so that repair
-# never attempts to modify the read-only image. Shims still resolve config.
-gh_global=/usr/local/share/pi-web/mise/installs/gh/global
-ln -sfn "$(readlink -f "$gh_global")" "$gh_global"
+install -d -m 0755 /etc/mise /usr/local/share/pi-web/mise
 
 runtime_uid=${PI_WEB_UID:-1000}
 runtime_gid=${PI_WEB_GID:-1000}
